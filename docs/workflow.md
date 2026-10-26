@@ -1,38 +1,48 @@
 # MAS-Flow Workflow
 
-MAS-Flow uses a **Continuous Flow (Kanban)** model orchestrated manually by the **Human**. The human evaluates the output at every single step, ensuring maximum quality control.
+MAS-Flow uses a **Continuous Flow (Kanban)** model. An **Orchestrator** (an AI session or the Human) routes each step to one agent and persists state in `handoff.md`; the **Human** decides at every gate (option, merge, escalations). The exact contract is in the [Protocol](protocol.md).
+
+## 0. Cartography (on adoption, then when maps drift)
+`/masflow map` — the **Researcher** surveys each project/area and the **Documenter** writes `product_map.md` (capabilities), `functional_map.md`, `repository_map.md`, and adds gaps as cards to `board.md`. Every later story links a capability, so the map stays current.
 
 ## 1. Ideation and Specification Phase (Human)
-1. The **Human Orchestrator** writes a high-level requirement.
-2. The Human manually invokes the **Researcher** agent, feeding it the requirement.
+1. The **Human** writes a goal or picks a card from `board.md`.
+2. The Orchestrator hands it to the **Planner** (or, for a trivial change, proposes the `fast` track to the Human).
+
+## 1.5 Strategic Planning Phase
+1. The **Planner** reads `handoff.md`, `core_architecture.md` and `repository_map.md`.
+2. It proposes 2-4 scored solution options.
+3. **Human Decision:** The Human selects one option; the Planner writes the User Story + Acceptance Criteria into `handoff.md`.
+4. The Planner also assigns the **track**: `fast` (cosmetic/config: straight to a single slice, no guard), `standard` (one bounded context: no architect) or `full` (everything else). See the [Protocol](protocol.md).
 
 ## 2. Research and Context Phase
-1. The **Researcher** navigates the repository and reads existing code.
-2. It generates the `handoff.md` file with all necessary technical context.
-3. **Human Evaluation:** The Human reads the `handoff.md`. If the research is incomplete, the human asks the Researcher to dig deeper or manually edits the file.
+1. The **Researcher** (the only agent that searches the codebase) reads `repository_map.md` and `functional_map.md`, then locates the relevant code.
+2. It returns verified pointers (paths, symbols, line ranges), boundary leaks, security context and existing equivalents — never code or recommendations.
+3. The Orchestrator persists the pointers in `handoff.md` §2.
 
-## 3. Planning and Architecture Phase
-1. The Human invokes the **Documenter** to split the `handoff.md` into User Stories.
-2. The Human approves the User Stories.
-3. The Human invokes the **Architect** agent.
-4. The Architect reads `core_architecture.md` and writes the step-by-step implementation plan into the `handoff.md`.
-5. **Human Evaluation:** The Human verifies the architectural plan makes sense for the stack.
+## 3. Design Phase (`full` track)
+1. The **Architect** reads the User Story, the research pointers, `core_architecture.md`, `functional_map.md` and `lessons.md`.
+2. It writes a slice plan into `handoff.md`: slices of ≤ 3-4 files (one project, one bounded context, one layer), each with its executor, files, tests and the acceptance criteria it covers (AC traceability table).
+3. The **Guard** reviews the plan (`plan_review`). A rejected plan goes back to the Architect before any code is written.
 
-## 4. Execution Phase (Specialized)
-1. The Human looks at the Architect's plan and decides which **Specialized Executor** to call. 
-   - *Example: Step 1 requires a new API endpoint. The Human calls the `Laravel Executor`.*
-   - *Example: Step 2 requires a video encoding script. The Human calls the `Python Executor`.*
-2. The Executor writes the code and updates the status.
-3. **Human Evaluation:** The Human reviews the code diffs. If the code is completely wrong, the Human might invoke a specialized correction agent or fix it manually.
+## 4 & 5. Execution and Validation (one slice at a time)
+The Architect's plan is divided into numbered slices. Each slice completes the full cycle below before the next one starts:
 
-## 5. Validation and Auditing Phase
-1. The Human invokes the **Tester** to generate and run unit tests.
-2. The Human invokes the **Guard** to ensure the new code didn't violate the `core_architecture.md` rules.
-3. If the Guard or Tester flags an issue, the Human Orchestrator sends the specific error back to the relevant Specialized Executor.
+1. **Terminal Executor** → `create_branch` (`masflow/<HU>`, one branch per story per repository; later slices check it out).
+2. **Researcher** → fetches the pointers listed for this slice.
+3. **Specialized Executor** → edits files directly on the branch and writes the tests for its code. If context is missing it returns `needs_info` and goes back to step 2.
+4. **Terminal Executor** → `commit_slice`.
+5. **Tester** → runs the slice tests and the full suite, and checks AC coverage. Failures go back to the Executor (then commit again).
+6. **Guard** → audits SOLID, DDD boundaries, OWASP and project rules. Rejections go back to the Executor (then commit again).
+7. The slice is marked `closed` in `handoff.md` and the next slice starts. After two or more failed rounds, the Human chooses between the **Fixer**, `rollback_slice`, or stopping.
+
+**Story close:** the **Tester** runs the full suite on the story branch of each repository touched, then the **Terminal Executor** runs `push_branch` and `merge_story` (PR + merge into main). Conflicts or a moved main stop for the Human. Then the Documenter consolidates.
 
 ## 6. Consolidation
-1. Once all tests and guards pass, the Human merges the code.
-2. If the architecture changed, the Human updates `core_architecture.md`, immediately updating the baseline knowledge for all agents.
-3. The **Documenter** (or Human) updates the `repository_map.md` to reflect any newly created files.
-4. The Human appends the User Story to `history.md`.
-5. **Handoff Cleanup:** The Human Orchestrator wipes the `handoff.md` file clean. The next iteration will start with a fresh handoff...
+The **Documenter**, once every slice is merged:
+1. Appends the story (decisions, files, rejections) to `history.md`.
+2. Updates `repository_map.md` and `functional_map.md`.
+3. Turns rejections into `lessons.md` entries; causes seen twice become binding *Active Rules*.
+4. Updates the story's capability in `product_map.md`, moves its card to **Done** and adds follow-ups to the **Inbox** of `board.md`.
+5. Proposes `core_architecture.md` changes for Human approval.
+6. Resets `handoff.md` to the idle template.

@@ -12,54 +12,93 @@ graph TD
     classDef agent fill:#bbf,stroke:#333,stroke-width:1px,color:#000;
     classDef document fill:#dfd,stroke:#333,stroke-width:1px,color:#000;
 
-    H[👤 Human Orchestrator]:::human
+    H[👤 Human Director]:::human
+    O[🧠 AI Orchestrator]:::agent
+    P[🧭 Planner]:::agent
     R[🔍 Researcher]:::agent
     D[📝 Documenter]:::agent
     A[📐 Architect]:::agent
     E[💻 Specialized Executor]:::agent
-    O[⚙️ DevOps / MCP]:::agent
+    TE[⚙️ Terminal Executor]:::agent
     T[🔬 Tester]:::agent
     G[🛡️ Guard]:::agent
-    
+
     HM[(history.md)]:::document
     CA[(core_architecture.md)]:::document
     HF[(handoff.md)]:::document
 
-    H -->|Initiates Task| R
-    R -->|Reads| HM
-    R -->|Writes Findings| HF
-    
-    HF --> D
-    D -->|Writes User Story| HF
-    
-    HF --> A
-    CA -->|Reads Rules| A
-    A -->|Writes Tech Plan| HF
-    
-    HF --> E
-    E -->|Writes Code| Code((Source Code))
-    O -.->|Installs / Migrates| Code
-    
+    H -->|Goal| O
+    O -->|Options| P
+    P -->|2-4 scored options| H
+    H -->|Selects option| P
+    P -->|User Story| HF
+    O -->|Delegates| R
+    R -->|File pointers| O
+    O --> D
+    D -->|Acceptance Criteria| HF
+    O --> A
+    CA -->|Rules| A
+    A -->|Slice plan| HF
+
+    O -->|create_branch per slice| TE
+    O -->|Pointers + slice| E
+    E -->|Direct edits + tests| Code((Branch: masflow/HU-sliceN))
+    TE -->|commit_slice| Code
     Code --> T
-    T -->|Writes/Runs Tests| Code
-    
+    T -->|Runs suite, reports regressions| O
     Code --> G
-    CA -->|Audits Against Rules| G
-    
-    G -->|Errors?| E
-    G -->|Approved| H
-    H -->|Merges & Cleans| HM
+    CA -->|Audits against rules| G
+    G -->|Approved / Rejected| O
+    O -->|Merge approval| H
+    H -->|merge_slice| TE
+    O -->|Phase 6| D
+    D -->|Consolidates| HM
 ```
 
 Unlike traditional human-oriented methodologies (like Scrum), which use sprints and meetings to synchronize context, **MAS-Flow** optimizes the asynchronous work of LLMs through external shared memory, strict separation of concerns, and rigorous architecture validation.
 
-## 🚀 Why MAS-Flow?
+## 🚀 Key Features
 
-1. **Continuous Flow over Sprints**: Agents work at the speed of computation. They don't need to be isolated in a two-week sprint. MAS-Flow processes tasks as they arrive, keeping the backlog dynamic.
-2. **Zero Context Loss**: Through the "Handoff Protocol" (`handoff.md` file), agents maintain a perfect shared memory at all times.
-3. **Independent Auditing**: The agent who writes the code is not the same one who audits it. Roles like the *Guard* ensure the code respects architectural rules (SOLID, DDD) before moving to the next step.
-4. **Human-in-the-Loop (HITL)**: The human transitions from a programmer to a "Director" or "Chief Architect", approving user stories and validating final Pull Requests.
-5. **Project-Specific Architecture**: The methodology uses a dedicated Architecture Context (`architecture.md`) so agents always know exactly what tech stack (e.g., Laravel PHP 8.2 vs Python) they are working with.
+1. **AI Orchestrator (The Brain)**: A central agent that reads `handoff.md` and delegates every task to exactly one specialized agent. It never writes code and works with "pointers" instead of raw source code.
+2. **Strategic Planning & Tracks (Phase 1.5)**: The `Planner` classifies the change (`fast` / `standard` / `full`) and proposes 2-4 scored options (DDD, SOLID, tech debt, reuse, risk, cost). The Human picks one; the track decides how much pipeline the change needs.
+3. **Pointer-Based Research**: The `Researcher` is the only agent that searches the codebase. It returns file paths and line ranges; executors read only what they need.
+4. **Slice-Based Execution on Git Branches**: The Architect splits the plan into small slices (max 3-4 files, one layer, one bounded context). Each slice lives on its own branch (`masflow/<HU>-slice<N>`): the executor edits files directly and writes its tests, the `Terminal Executor` commits, and the slice is merged only after Tester + Guard approval.
+5. **Zero Context Loss**: Through the "Handoff Protocol" (`handoff.md` file), agents maintain a perfect shared memory and can run statelessly.
+6. **Independent Auditing**: The agent who writes the code is not the same one who audits it. The *Tester* only runs the suite and the *Guard* only audits (SOLID, DDD, OWASP); failures go back to the original executor.
+7. **Learning Loop**: Rejections from the Tester and Guard are logged; causes that repeat become binding *Active Rules* in `lessons.md`, audited on every slice.
+8. **Project-Specific Architecture**: The methodology uses a dedicated Architecture Context (`core_architecture.md`) so agents always know exactly what tech stack (e.g., Laravel PHP 8.3, PHPUnit) they are working with.
+
+## 🧩 What MAS-Flow gives a project
+
+| Portable (this repository) | Owned by each project |
+|---|---|
+| Principles: [Manifesto](MANIFESTO.md), [Protocol](docs/protocol.md) | `masflow.config.json` — projects, test commands, environment rules, models, command guard |
+| Product cartography: `/masflow map` builds a product map (capabilities), functional and repository maps from the code; a board tracks every task | |
+| Core agents: `agents/core/` (orchestrator, planner, researcher, architect, executor, terminal_executor, tester, guard, fixer, documenter) + shared protocol | `.masflow/agents/` — project-specific agents or specializations (`extends:`) |
+| Stack packs: `agents/packs/` (`laravel`, `shopify`) | `.masflow/` state — handoff, board, product/functional/repository maps, core_architecture, lessons, history |
+| Templates for every state file | |
+| `scripts/masflow.py` — `init`, `sync`, `status`, `check` | |
+| Runtime integrations: Claude Code (subagents, `/masflow` skill, hooks) and OpenCode | |
+
+## ⚡ Adopting MAS-Flow in a project
+
+```bash
+cp -r MAS-Flow /path/to/workspace/          # or add it as a git submodule
+cd /path/to/workspace
+python3 MAS-Flow/scripts/masflow.py init     # asks project name, packs, test command…
+```
+
+`init` creates `masflow.config.json`, the `.masflow/` state files and the runtime agents, and makes `CLAUDE.md` import the generated MAS-Flow instructions. Then:
+
+1. Describe your stack and rules in `.masflow/core_architecture.md` — every agent obeys it.
+2. Review `masflow.config.json`: projects, test commands (`{project}`/`{workspace}` placeholders), deterministic checks for the guard, environment rules, blocked host commands, models.
+3. Add project-specific agents in `.masflow/agents/` (e.g. `executor_billing.md` with `extends: executor_laravel`).
+4. `python3 MAS-Flow/scripts/masflow.py sync` after any change, `check` to validate.
+5. In Claude Code: `/masflow map` to map what already exists, then `/masflow board` and `/masflow <goal or card>`.
+
+Updating the methodology later is just replacing the `MAS-Flow/` folder (or pulling the submodule) and running `sync`: the project's config, agents and state are never overwritten.
+
+Runtimes: **Claude Code** — see [Running MAS-Flow with Claude Code](docs/claude_code.md). **OpenCode** — add `"opencode"` to `runtimes` in the config (writes `.opencode/agents/`; models stay in `opencode.json`).
 
 ## 📂 Methodology Structure
 
@@ -72,16 +111,12 @@ To adopt MAS-Flow, please read our methodology documentation:
 - [Execution Guide (Prompts & Mechanics)](docs/execution_guide.md)
 - [Practical Example (Step-by-Step)](docs/example_flow.md)
 - [Recommended Tools](docs/tools.md)
+- [Protocol (state files, statuses, tracks, gates, learning loop)](docs/protocol.md)
+- [Running MAS-Flow with Claude Code](docs/claude_code.md)
 
-## 🛠️ Getting Started
+## 🛠️ Without a supported runtime
 
-MAS-Flow is not dependent on a specific coding framework. You can implement it using tools like LangChain, CrewAI, AutoGen, or even by orchestrating custom scripts. The important part is to respect the **flow architecture and roles**.
-
-1. Read the [Manifesto](MANIFESTO.md) to understand the philosophy.
-2. Define the [Roles](docs/roles.md) in your multi-agent system.
-3. Define your project's stack in the Architecture Context.
-4. Implement the `handoff.md` file in your repository.
-5. Start the flow!
+MAS-Flow is a methodology first. With any other framework (LangGraph, CrewAI, AutoGen, custom scripts), keep the essentials: the roles in `agents/core/`, the [protocol](docs/protocol.md) (single-writer handoff, canonical statuses, slice cycle, Human gates) and the state files in `templates/`.
 
 ## 📜 License
 

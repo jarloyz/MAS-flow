@@ -1,0 +1,42 @@
+{
+  "masflow": 1,
+  "project_name": "My Project",
+  "human_language": "English",
+  "state_dir": ".masflow",
+  "packs": [],
+  "runtimes": ["claude-code"],
+  "git": {
+    "branch_prefix": "masflow/",
+    "main_branch": "main"
+  },
+  "projects": [
+    {
+      "name": "app",
+      "path": ".",
+      "description": "Main application.",
+      "notes": [],
+      "tests": {
+        "preflight": [],
+        "full": "cd {project} && npm test",
+        "file": "cd {project} && npm test -- {file}",
+        "filter": "cd {project} && npm test -- -t \"{filter}\""
+      },
+      "checks": []
+    }
+  ],
+  "environment": [
+    "All commands run from the project directory with absolute paths."
+  ],
+  "command_guard": {
+    "blocked": [],
+    "hint": ""
+  },
+  "models": {},
+  "disabled_agents": [],
+  "claude_code": {
+    "permissions": {
+      "allow": [],
+      "deny": ["Bash(git push --force:*)", "Bash(git reset --hard:*)"]
+    }
+  }
+}

@@ -1,16 +1,10 @@
 # Repository Map (Maintained by the Documenter)
 
-> **Researcher Agent:** Read this map first to understand where things are located before asking to read specific files. This prevents context bloat and saves tokens.
+> Organized **by project and area/bounded context** (never by story): one section per area with its directories and their responsibility. Stories go to history.md.
+> **Researcher:** read this map first to know where to look before opening files.
 
-## 1. Domain Models (e.g., `/src/Domain`)
-- `UserEntity.php`: Core user logic and attributes.
-- `VideoEntity.php`: Core video metadata and states.
-
-## 2. Infrastructure (e.g., `/src/Infrastructure`)
-- `Auth/JwtAdapter.php`: Handles JWT token generation.
-
-## 3. Scripts (e.g., `/scripts`)
-- `media/generate_thumbnail.py`: FFmpeg wrapper for video processing.
-
----
-*Notice: Documenter Agent, update this map during the Consolidation phase whenever a new file is created or the architecture changes.*
+<!-- Section template:
+## <project> — <area / bounded context>
+- `path/to/dir/` — responsibility in one line.
+- `path/to/important/File.ext` — why it matters (entry point, contract, config).
+-->

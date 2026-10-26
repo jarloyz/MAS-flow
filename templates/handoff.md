@@ -1,27 +1,33 @@
+---
+masflow: 1
+story: null
+title: null
+capability: null
+track: null
+phase: 0
+status: idle
+current_slice: null
+next_agent: null
+next_task: null
+updated_by: null
+updated_at: null
+---
 # MAS-Flow Handoff
 
-> **Notice:** This file is ephemeral. It contains context only for the CURRENT iteration. Once the task is completed and approved, the Human Orchestrator must wipe this file clean.
+> Single source of truth for the CURRENT story. The front matter and the Execution Log are written only by the orchestrator.
+> Phase 6 (documenter) resets this file to this template.
 
-## 1. Current Status
-- **Current Task:** [e.g., US-045 - Add Video Upload Endpoint]
-- **Agent in Turn:** [e.g., Architect / Specialized Executor / Tester]
-- **State:** [e.g., Planning / Coding / Testing / Failed_Guard_Check]
+## 1. User Story
+_Written by `planner` (Phase 1.5)._
 
-## 2. Context & Inputs (From Researcher / Orchestrator)
-- **Goal:** [Brief description of what we are trying to achieve right now]
-- **Relevant Files Identified:** 
-  - `path/to/file1.php`
-  - `path/to/file2.py`
+## 2. Research Pointers
+_Persisted by the orchestrator from `researcher` results (Phase 2)._
 
-## 3. Implementation Plan (From Architect)
-> **Executor:** Follow these exact steps. Do not stray from this plan. Ensure you adhere to `core_architecture.md`.
-1. [Step 1: Create Entity...]
-2. [Step 2: Add Repository Interface...]
-3. [Step 3: Implement Controller...]
+## 3. Technical Plan
+_Written by `architect` (Phase 3): approach, slice table, slice specs, AC traceability, risks._
 
-## 4. Output / Feedback (From Executors / Testers / Guards)
-- **Result:** [e.g., Executor finished Step 1 and 2. Tests failed on Step 2.]
-- **Errors/Logs (If any):**
-```text
-[Paste error logs here for the Executor to fix autonomously]
-```
+## 4. Execution Log
+_Append-only, one line per agent result: `- <date> <agent> <status> — <summary>`._
+
+## 5. Open Issues
+_Unresolved tester/guard findings and questions for the Human._
