@@ -40,6 +40,7 @@ On a Claude subscription there is no per-token bill, but usage limits drain fast
 | planner, architect | top (`fable`; `opus` where Fable is not available) | One run per story; a wrong option or plan costs every slice after it. |
 | guard `plan_review` (via `mode_models`) | top | One run per story; design and security flaws are cheapest to catch before code exists. |
 | fixer | top | Rare (only after the retry budget is exhausted) and needs root-cause diagnosis. |
+| security (`threat_model`, `story_audit`) | top | Once or twice per story; adversarial review of the whole diff — the slowest step, kept on purpose. |
 | executors, guard `code_audit`, documenter | `sonnet` | Run every slice; writing and auditing code. |
 | researcher, tester, terminal_executor | `haiku` | Mechanical steps: locating files, running commands, git. `researcher` `survey` on a large scope → `sonnet` via `mode_models`. |
 

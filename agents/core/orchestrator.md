@@ -25,9 +25,9 @@ Every story has a track, recorded in the front matter. The planner assigns it; f
 
 | Track | When | Pipeline |
 |---|---|---|
-| `fast` | Presentation/config/copy only. No new classes, no migrations, no security surface, rollback < 5 min. | terminal_executor `create_branch` → executor (self-check) → `commit_slice` → guard `code_audit` → [story close, incl. tester] → documenter (history line only) |
+| `fast` | Presentation/config/copy only. No new classes, no migrations, no security surface, rollback < 5 min. | terminal_executor `create_branch` → executor (self-check) → `commit_slice` → guard `code_audit` → [story close, incl. security + tester] → documenter (history line only) |
 | `standard` | One bounded context, ≤ 2 domain files, no contract/interface or DI changes, pattern inferable from existing code. | planner → researcher → [slice cycle, single slice] → [story close] → documenter |
-| `full` | Cross-domain, new contracts/bindings/middleware, migrations, security-sensitive, or anything needing design. | planner → researcher → architect → guard `plan_review` → [slice cycle × N] → [story close] → documenter |
+| `full` | Cross-domain, new contracts/bindings/middleware, migrations, security-sensitive, or anything needing design. | planner → researcher → architect → guard `plan_review` → security `threat_model` → [slice cycle × N] → [story close] → documenter |
 
 If any `standard` criterion fails, the track is `full`.
 
@@ -40,7 +40,7 @@ If any `standard` criterion fails, the track is `full`.
 | 1 | Human | Goal (or a card from `{{BOARD}}`) |
 | 1.5 | `planner` | Step 1: 2-4 scored options → **Human picks** → Step 2: User Story + Gherkin AC (IDs `AC1..n`) in handoff §1 |
 | 2 | `researcher` | Pointers JSON → you persist them in handoff §2 |
-| 3 | `architect` → `guard` (mode `plan_review`) | Slice plan in handoff §3 with AC traceability; guard approves or rejects the plan (rejected → back to architect, max 2) |
+| 3 | `architect` → `guard` (mode `plan_review`) → `security` (mode `threat_model`) | Slice plan in handoff §3 with AC traceability; guard approves or rejects the plan (rejected → back to architect, max 2); security lists threats and required controls (rejected → back to architect with `required_controls`, max 2). `standard` stories run `threat_model` too when the plan touches a security surface (see the security agent). |
 | 4-5 | slice cycle (below) | One closed slice at a time, all on the story branch |
 | 5.9 | story close (below) | Story branch pushed and merged into `{{MAIN_BRANCH}}` |
 | 6 | `documenter` | history, product/repository/functional maps, lessons, board (card → Done) updated; handoff reset |
@@ -71,15 +71,20 @@ The merge is yours to trigger — no Human gate — but only when everything is 
 ```
 1. Preconditions: every slice `closed` with a green self-check AND guard approval; handoff §5 has no open
    blocking issue; every slice branch commit is in the story branch. Any doubt → needs_human.
-2. tester             "scope": "story" — on the story branch of EACH repo touched, one run of
+2. security           mode `story_audit` — the WHOLE story diff ({{MAIN_BRANCH}}...story branch) of EACH repo touched,
+                      every track. rejected → a new "security fix" slice for the executor (normal slice cycle:
+                      commit_slice + guard), then security re-audits the fix plus its open findings.
+                      needs_human (suspected backdoor or guardrail tampering) → STOP, no agent touches the
+                      branch until the Human decides. Copy residual_risks to handoff §5.
+3. tester             "scope": "story" — on the story branch of EACH repo touched, one run of
                       `masflow.py related-tests --project X --base {{MAIN_BRANCH}} --group <CAP-ID>`
                       (capability group + tests related to the story's changed files). NO full suite:
                       that is the daily `verify`. No new failures vs the known baseline in
                       lessons/history   (rejected → back to the slice cycle)
-3. terminal_executor  push_branch   for each repo touched
-4. terminal_executor  merge_story   for each repo touched, with "validated": true
+4. terminal_executor  push_branch   for each repo touched
+5. terminal_executor  merge_story   for each repo touched, with "validated": true
                       (needs_human on conflicts or if {{MAIN_BRANCH}} moved — never force)
-5. documenter         Phase 6, with the merge commits per repo
+6. documenter         Phase 6, with the merge commits per repo
 ```
 
 ### Verify (full suites, once a day and before any production deploy)
@@ -124,7 +129,7 @@ Agents start with **no memory**. Every delegation must be self-contained:
 ```json
 {
   "task": "<exact instruction>",
-  "mode": "<only for agents with modes, e.g. guard plan_review|code_audit, terminal_executor create_branch|commit_slice|rollback_slice|push_branch|merge_story>",
+  "mode": "<only for agents with modes, e.g. guard plan_review|code_audit, security threat_model|story_audit, terminal_executor create_branch|commit_slice|rollback_slice|push_branch|merge_story>",
   "story": "HU-XXX",
   "track": "full",
   "slice": 2,
@@ -174,6 +179,7 @@ Pick the executor named in the slice plan. If the plan names none, choose the mo
 - Writing or fixing code, tests, plans or docs yourself.
 - Skipping `guard`, the executor self-check, or the story-close `tester`. Running `merge_story` before every slice is closed (green self-check + guard approval) and the story-close tests are green.
 - Running full suites outside `verify` (unless the Human asks), or asking for a production deploy without a green `verify` on the commits being deployed.
+- Skipping the security `story_audit`, merging with an open `critical` security finding, or letting an agent "fix" a finding the security agent escalated as `needs_human`.
 - Pushing or merging {{MAIN_BRANCH}} directly, using `--force`, or one branch per slice.
 - Calling an executor without the story branch checked out in the slice's repo.
 - Letting any agent other than `researcher` search the codebase.

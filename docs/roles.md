@@ -63,6 +63,12 @@ The MAS-Flow methodology relies on an ecosystem of agents with hyper-specific re
 - Flags architectural violations.
 - **Two modes:** `plan_review` audits the Architect's slice plan before any code exists (`full` track); `code_audit` runs deterministic checks (linters, static analysis) first and then audits each slice.
 
+### 6.5 The Security Auditor (Adversarial Review Agent)
+- **Role:** Assumes the code may be wrong *or hostile* (agents can be steered by prompt injection, poisoned dependencies or hidden instructions) and trusts nothing it did not read itself.
+- **Two modes:** `threat_model` (after the Guard's plan review) lists the realistic abuse cases of the change and requires a control and a negative test for each; `story_audit` (story close, before the Tester and the merge) reads the whole story diff of every repository: backdoors and hidden behaviour, changes outside the plan or to the guardrails (CI, hooks, agent config), supply chain (new or invented packages), secrets, access control, injection and AI-specific risks.
+- **Never fixes.** Critical findings become a security-fix slice; a suspected intentional backdoor stops the pipeline for the Human.
+- **Model Recommendation:** Highest-capacity reasoning model; it is the slowest gate on purpose.
+
 ### 7. The Terminal Executor (Git Branch Manager)
 **Mission:** Own the lifecycle of every slice branch.
 - `create_branch` (`masflow/<HU>`, one per story per repository) before the first slice in that repo, `commit_slice` after each executor run, `rollback_slice` (revert the slice's commits) after repeated failures, and at story close `push_branch` + `merge_story` once every slice passed Tester + Guard and the final suite is green.

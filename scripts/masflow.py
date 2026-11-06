@@ -273,6 +273,16 @@ def render_checks(ws: Workspace) -> str:
     return "\n\n".join(blocks) or "No deterministic checks configured: audit by reading the code."
 
 
+def render_security_checks(ws: Workspace) -> str:
+    blocks = []
+    for project in ws.config.get("projects", []):
+        checks = project.get("security_checks", [])
+        if checks:
+            blocks.append(f"#### `{project['name']}`\n" + "\n".join(f"- `{ws.expand(c, project)}`" for c in checks))
+    return "\n\n".join(blocks) or ("No security tools configured (`projects[].security_checks`): audit by reading the diff, "
+                                    "and report `not_available` for dependency and secret scanning.")
+
+
 def render_roster(agents: dict[str, Agent]) -> str:
     lines = ["| Agent | Model | Use for |", "|---|---|---|"]
     for name in sorted(agents):
@@ -314,6 +324,7 @@ def placeholder_values(ws: Workspace, agents: dict[str, Agent]) -> dict[str, str
         "ENVIRONMENT": render_environment(ws),
         "TEST_COMMANDS": render_tests(ws),
         "CHECK_COMMANDS": render_checks(ws),
+        "SECURITY_COMMANDS": render_security_checks(ws),
         "MODE_MODELS": render_mode_models(ws),
         "AGENT_ROSTER": render_roster(agents),
     }

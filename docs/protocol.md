@@ -74,7 +74,8 @@ create_branch (once per story & repo) → [researcher] → executor (code + test
   → guard code_audit (static checks, no tests)
   → slice closed                            (or retry ×2 → fixer | rollback_slice)
 
-story close: tester (capability group + tests related to the story's changed files) per repo
+story close: security story_audit (whole story diff: backdoors, scope drift, supply chain, secrets, authz, injection, AI risks)
+  → tester (capability group + tests related to the story's changed files) per repo
   → push_branch → merge_story (validated) → documenter
 
 verify (daily, and before any production deploy): tester full suite per project on main → verify_log.md
@@ -87,7 +88,7 @@ A slice is ≤ 3-4 files, one project, one bounded context, one layer. Slice N+1
 ## 6. Quality gates
 
 1. **Option choice** (Human) — planner presents scored options; nothing is designed before a choice.
-2. **Plan review** (guard, `full` track) — design errors are cheapest before code exists.
+2. **Plan review** (guard, `full` track) — design errors are cheapest before code exists. Then the **threat model** (security): every realistic abuse case needs a control and a negative test in the plan.
 3. **Tests** — four tiers: slice self-check (executor), no tests in the audit (guard), capability group + related tests at story close (tester), full suites once a day and before a deploy (tester `verify`). Every AC is mapped to a passing test.
 4. **Audit** (guard) — deterministic checks first (linters/static analysis from config), then SOLID/DDD/OWASP/project rules/Active Rules.
 5. **Merge** (Human) — nothing reaches the main branch without approval.

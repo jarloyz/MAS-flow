@@ -35,7 +35,7 @@ The Architect's plan is divided into numbered slices. Each slice completes the f
 5. **Guard** → audits SOLID, DDD boundaries, OWASP and project rules with static checks only (no tests). Rejections go back to the Executor (then commit again).
 6. The slice is marked `closed` in `handoff.md` and the next slice starts. After two or more failed rounds, the Human chooses between the **Fixer**, `rollback_slice`, or stopping.
 
-**Story close:** the **Tester** runs the capability's test group plus the tests related to every file the story changed (no full suite) on the story branch of each repository touched, then the **Terminal Executor** runs `push_branch` and `merge_story` (PR + merge into main). Conflicts or a moved main stop for the Human. Then the Documenter consolidates.
+**Story close:** the **Security** auditor first reads the whole story diff of each repository (backdoors, changes outside the plan or to the guardrails, new dependencies, secrets, access control, injection, prompt injection); a critical finding becomes a security-fix slice, a suspected backdoor stops everything for the Human. Then the **Tester** runs the capability's test group plus the tests related to every file the story changed (no full suite) on the story branch of each repository touched, then the **Terminal Executor** runs `push_branch` and `merge_story` (PR + merge into main). Conflicts or a moved main stop for the Human. Then the Documenter consolidates.
 
 **Verify (daily):** `/masflow verify` — the **Tester** runs the full suite of every project on main once, at the end of the day and before any production deploy, and compares failures with the known baseline. Regressions become Inbox cards; a deploy needs a green verify on the exact commits being deployed.
 
