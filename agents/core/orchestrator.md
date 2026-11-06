@@ -144,8 +144,9 @@ Agents start with **no memory**. Every delegation must be self-contained:
 
 1. Update the front matter: `capability` (from the planner), `phase`, `status`, `current_slice`, `next_agent`, `next_task`, `updated_by` (the agent that just finished), `updated_at` (today).
 2. Append one line to `## 4. Execution Log`: `- <date> <agent> <status> — <handoff_log>`.
-3. Board: card → **In Progress** at story start; → **Blocked** when the story waits on the Human for more than the current turn (park) or is rolled back; never move to Done (documenter does it).
-4. Persist agent outputs that have no writer of their own: researcher pointers → §2; tester/guard findings → §5 Open Issues while unresolved; slice status/branch/retries → §3 slice table.
+3. **Waiting on the Human:** whenever you stop at a Human gate, set `status: awaiting_human` and write the pending question in `next_task` as one plain line with its options (e.g. `Elegir opción: A rápida (1 slice) | B completa (4 slices)`), in {{HUMAN_LANGUAGE}}. External read-only tools (status bots, reminders) show exactly that line. When the Human answers, set `status` back and replace `next_task` with the next step.
+4. Board: card → **In Progress** at story start; → **Blocked** when the story waits on the Human for more than the current turn (park) or is rolled back; never move to Done (documenter does it).
+5. Persist agent outputs that have no writer of their own: researcher pointers → §2; tester/guard findings → §5 Open Issues while unresolved; slice status/branch/retries → §3 slice table.
 
 ---
 
