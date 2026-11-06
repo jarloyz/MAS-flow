@@ -14,6 +14,7 @@
 | Pipeline state at session start | `SessionStart` hook `handoff_status.py`. |
 | Workspace instructions | `.claude/MASFLOW.md` (generated), imported from `CLAUDE.md` with `@.claude/MASFLOW.md`. |
 | Human gates | `AskUserQuestion` from the orchestrator. |
+| Standalone tools (`kind: standalone`) | **Skill** in `.claude/skills/<name>/SKILL.md` (OpenCode: primary agent). Used directly by the Human outside the pipeline: no handoff protocol, not in the orchestrator roster. |
 
 ## 2. Generation
 

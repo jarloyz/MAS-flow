@@ -164,6 +164,11 @@ class Agent:
     def is_orchestrator(self) -> bool:
         return self.meta.get("kind") == "orchestrator"
 
+    @property
+    def is_standalone(self) -> bool:
+        """Interactive tool used directly by the Human, outside the pipeline (no handoff protocol, not in the roster)."""
+        return self.meta.get("kind") == "standalone"
+
 
 def load_layers(ws: Workspace) -> list[list[AgentSource]]:
     layers: list[tuple[str, Path]] = [("core", CORE_DIR)]
@@ -272,7 +277,7 @@ def render_roster(agents: dict[str, Agent]) -> str:
     lines = ["| Agent | Model | Use for |", "|---|---|---|"]
     for name in sorted(agents):
         agent = agents[name]
-        if not agent.is_orchestrator:
+        if not agent.is_orchestrator and not agent.is_standalone:
             lines.append(f"| `{name}` | {agent.meta.get('model', 'inherit')} | {agent.meta.get('description', '')} |")
     return "\n".join(lines)
 
@@ -323,8 +328,22 @@ def substitute(text: str, values: dict[str, str], where: str) -> str:
     return PLACEHOLDER.sub(replace, text)
 
 
+STANDALONE_PROTOCOL = """## WORKSPACE RULES (standalone tool)
+
+You are used directly by the Human, outside the MAS-Flow pipeline: talk to them in {{HUMAN_LANGUAGE}}, ask when something is ambiguous, and never read or edit `{{STATE_DIR}}/` pipeline files (handoff, board, maps). No result envelope is needed.
+
+### Projects in this workspace
+
+{{PROJECTS}}
+
+### Environment rules
+
+{{ENVIRONMENT}}
+"""
+
+
 def full_prompt(agent: Agent, values: dict[str, str], adapter: str) -> str:
-    shared = (CORE_DIR / "_shared.md").read_text(encoding="utf-8")
+    shared = STANDALONE_PROTOCOL if agent.is_standalone else (CORE_DIR / "_shared.md").read_text(encoding="utf-8")
     text = f"{agent.body.rstrip()}\n\n---\n\n{shared.rstrip()}\n\n---\n\n{adapter.strip()}\n"
     return substitute(text, values, agent.name)
 
@@ -338,6 +357,12 @@ CLAUDE_AGENT_ADAPTER = """## RUNTIME: CLAUDE CODE
 - Use absolute paths. Edit tool parameters: `file_path`, `old_string`, `new_string`. `Read` a file before editing it.
 {shell}- Never edit the handoff front matter or the Execution Log — the orchestrator owns them.
 """
+
+CLAUDE_STANDALONE_ADAPTER = """## RUNTIME: CLAUDE CODE
+
+- You run in the **main Claude Code session** as the `/{name}` skill. Invocation arguments: `$ARGUMENTS`
+- Use absolute paths. `Read` a file before editing it; never overwrite an existing file wholesale without the Human's confirmation.
+{shell}"""
 
 CLAUDE_SHELL_NOTE = "- The Bash tool has no working-directory parameter and you must not rely on a previous `cd`: run every command as ONE line `cd <absolute project path> && <command>`.\n"
 
@@ -382,9 +407,11 @@ def mcp_summary(tools: list[str]) -> list[str]:
 
 def generate_claude(ws: Workspace, agents: dict[str, Agent], values: dict[str, str]) -> list[str]:
     out_agents = ws.root / ".claude" / "agents"
-    out_skill = ws.root / ".claude" / "skills" / "masflow" / "SKILL.md"
+    skills_dir = ws.root / ".claude" / "skills"
+    out_skill = skills_dir / "masflow" / "SKILL.md"
     written: list[str] = []
     expected: set[Path] = set()
+    expected_skills: set[Path] = {out_skill}
 
     for name, agent in sorted(agents.items()):
         if agent.is_orchestrator:
@@ -400,6 +427,20 @@ def generate_claude(ws: Workspace, agents: dict[str, Agent], values: dict[str, s
             continue
 
         shell = CLAUDE_SHELL_NOTE if "shell" in (agent.meta.get("tools") or []) else ""
+        if agent.is_standalone:
+            path = skills_dir / name / "SKILL.md"
+            expected_skills.add(path)
+            hint = f"argument-hint: {yaml_quote(agent.meta['argument_hint'])}\n" if agent.meta.get("argument_hint") else ""
+            header = (
+                f"---\nname: {name}\n"
+                f"description: {yaml_quote(agent.meta.get('description', name))}\n{hint}---\n\n"
+                f"<!-- {GENERATED_MARK} from {' > '.join(agent.chain)} — do not edit here -->\n\n"
+            )
+            adapter = CLAUDE_STANDALONE_ADAPTER.format(name=name, shell=shell)
+            if write_if_changed(path, header + full_prompt(agent, values, adapter)):
+                written.append(str(path.relative_to(ws.root)))
+            continue
+
         header = (
             f"---\nname: {name}\n"
             f"description: {yaml_quote(agent.meta.get('description', name))}\n"
@@ -416,6 +457,12 @@ def generate_claude(ws: Workspace, agents: dict[str, Agent], values: dict[str, s
     for path in out_agents.glob("*.md") if out_agents.is_dir() else []:
         if path not in expected and GENERATED_MARK in path.read_text(encoding="utf-8"):
             path.unlink()
+            written.append(f"removed {path.relative_to(ws.root)}")
+    for path in skills_dir.glob("*/SKILL.md") if skills_dir.is_dir() else []:
+        if path not in expected_skills and GENERATED_MARK in path.read_text(encoding="utf-8"):
+            path.unlink()
+            if not any(path.parent.iterdir()):
+                path.parent.rmdir()
             written.append(f"removed {path.relative_to(ws.root)}")
 
     written += write_claude_settings(ws)
@@ -475,8 +522,10 @@ def write_claude_memory(ws: Workspace, agents: dict[str, Agent]) -> list[str]:
     rows = ["| Agent | Model | Tools | Defined in |", "|---|---|---|---|"]
     for name in sorted(agents):
         agent = agents[name]
-        if not agent.is_orchestrator:
+        if not agent.is_orchestrator and not agent.is_standalone:
             rows.append(f"| `{name}` | {agent.meta.get('model', 'inherit')} | {claude_tools(agent.meta, mcp_summary(agent_extra_tools(ws, name)))} | {' > '.join(agent.chain)} |")
+    tools_rows = [f"- `/{name}` — {agents[name].meta.get('description', '')}" for name in sorted(agents) if agents[name].is_standalone]
+    standalone = ("\n\n## Standalone tools (outside the pipeline)\n\n" + "\n".join(tools_rows)) if tools_rows else ""
     state = ws.config.get("state_dir", ".masflow")
     content = f"""<!-- {GENERATED_MARK} -->
 # MAS-Flow in this workspace
@@ -488,7 +537,7 @@ This workspace runs the **MAS-Flow** pipeline (methodology in `{MASFLOW_DIR.rela
 - Pipeline state: `{state}/handoff.md` (YAML front matter). Task flow: `{state}/board.md`. What the product does: `{state}/product_map.md` (capabilities `CAP-...`, every story links one). Lessons: `{state}/lessons.md` (Active Rules are binding).
 - Agents are generated: edit `MAS-Flow/agents/` (methodology), `{state}/agents/` (project-specific) or `{CONFIG_NAME}`, then run `python3 MAS-Flow/scripts/masflow.py sync`.
 
-{chr(10).join(rows)}
+{chr(10).join(rows)}{standalone}
 """
     path = ws.root / ".claude" / "MASFLOW.md"
     return [str(path.relative_to(ws.root))] if write_if_changed(path, content) else []
@@ -504,6 +553,11 @@ OPENCODE_AGENT_ADAPTER = """## RUNTIME: OPENCODE
 - Never edit the handoff front matter or the Execution Log — the orchestrator owns them.
 """
 
+OPENCODE_STANDALONE_ADAPTER = """## RUNTIME: OPENCODE
+
+- You are a primary OpenCode agent the Human talks to directly. Always pass the absolute `filePath` (Edit: `filePath`, `oldString`, `newString`).
+"""
+
 OPENCODE_ORCHESTRATOR_ADAPTER = """## RUNTIME: OPENCODE
 
 - You are the primary OpenCode agent. Delegate with the task tool (`subagent_type` = agent name) passing the delegation payload. Ask the Human directly at every gate, in {{HUMAN_LANGUAGE}}.
@@ -512,7 +566,9 @@ OPENCODE_ORCHESTRATOR_ADAPTER = """## RUNTIME: OPENCODE
 
 
 def generate_opencode(ws: Workspace, agents: dict[str, Agent], values: dict[str, str]) -> list[str]:
-    written = []
+    out_agents = ws.root / ".opencode" / "agents"
+    written: list[str] = []
+    expected: set[Path] = set()
     for name, agent in sorted(agents.items()):
         enabled = {tool for cap in agent.meta.get("tools") or [] for tool in OPENCODE_TOOLS.get(cap, [])}
         if agent.is_orchestrator:
@@ -521,13 +577,21 @@ def generate_opencode(ws: Workspace, agents: dict[str, Agent], values: dict[str,
         tool_lines = "".join(f"  {tool}: {'true' if tool in enabled else 'false'}\n" for tool in sorted(all_tools))
         header = (
             f"---\ndescription: {yaml_quote(agent.meta.get('description', name))}\n"
-            f"mode: {'primary' if agent.is_orchestrator else 'subagent'}\n"
+            f"mode: {'primary' if agent.is_orchestrator or agent.is_standalone else 'subagent'}\n"
             f"tools:\n{tool_lines}---\n\n<!-- {GENERATED_MARK} — do not edit here -->\n\n"
         )
-        adapter = OPENCODE_ORCHESTRATOR_ADAPTER if agent.is_orchestrator else OPENCODE_AGENT_ADAPTER
-        path = ws.root / ".opencode" / "agents" / f"{name}.md"
+        adapter = (OPENCODE_ORCHESTRATOR_ADAPTER if agent.is_orchestrator
+                   else OPENCODE_STANDALONE_ADAPTER if agent.is_standalone else OPENCODE_AGENT_ADAPTER)
+        path = out_agents / f"{name}.md"
+        expected.add(path)
         if write_if_changed(path, header + full_prompt(agent, values, adapter)):
             written.append(str(path.relative_to(ws.root)))
+
+    # remove stale generated agents (never touch hand-written ones)
+    for path in out_agents.glob("*.md") if out_agents.is_dir() else []:
+        if path not in expected and GENERATED_MARK in path.read_text(encoding="utf-8"):
+            path.unlink()
+            written.append(f"removed {path.relative_to(ws.root)}")
     return written
 
 
@@ -585,7 +649,7 @@ def cmd_check(ws: Workspace) -> None:
                 problems.append(f"agent {agent.name}: unknown placeholder {{{{{key}}}}}")
         if not agent.meta.get("description"):
             problems.append(f"agent {agent.name}: missing description")
-        if not agent.is_orchestrator and not agent.meta.get("tools"):
+        if not agent.is_orchestrator and not agent.is_standalone and not agent.meta.get("tools"):
             problems.append(f"agent {agent.name}: no tools declared")
     for name in ws.config.get("models", {}):
         if name not in agents:

@@ -32,7 +32,18 @@ SEPARATORS = {"&&", "||", ";", "|", "&", "(", ")", ";;"}
 def command_segments(command: str) -> list[list[str]]:
     """Split a shell command into simple commands, respecting quotes (quoted text is data, not a command)."""
     segments: list[list[str]] = []
+    heredocs: list[tuple[str, bool]] = []  # pending (delimiter, quoted) whose body starts on the next line
     for line in command.splitlines():
+        if heredocs:
+            delimiter, quoted = heredocs[0]
+            if line.strip() == delimiter:
+                heredocs.pop(0)
+            elif not quoted:
+                # an unquoted heredoc body is data, but its substitutions still execute
+                for inner in re.findall(r"\$\(([^()]*)\)|`([^`]*)`", line):
+                    segments += command_segments(inner[0] or inner[1])
+            continue
+        heredocs += [(m.group(2), bool(m.group(1))) for m in re.finditer(r"<<-?\s*(['\"]?)(\w+)\1", line)]
         # command substitutions execute even inside double quotes: inspect them as commands too
         for inner in re.findall(r"\$\(([^()]*)\)|`([^`]*)`", line):
             segments += command_segments(inner[0] or inner[1])
