@@ -12,7 +12,7 @@ Layout
   MAS-Flow/agents/core/        generic agents + _shared.md protocol      (portable)
   MAS-Flow/agents/packs/<p>/   stack-specific agents (laravel, shopify)  (portable)
   <state_dir>/agents/          project-specific agents and overrides     (owned by the project)
-  masflow.config.json          paths, test commands, models, packs       (owned by the project)
+  masflow.config.json          paths, test commands, models, mode_models, packs (owned by the project)
 
 An agent file may declare `extends: <agent>`: its body is appended to the base agent's body as a
 specialization. A project agent with the same name as a core/pack agent replaces it, unless it
@@ -277,6 +277,17 @@ def render_roster(agents: dict[str, Agent]) -> str:
     return "\n".join(lines)
 
 
+def render_mode_models(ws: Workspace) -> str:
+    """config.mode_models = {agent: {mode: model}}: per-mode model overrides passed in the delegation call."""
+    rows = []
+    for agent, modes in sorted(ws.config.get("mode_models", {}).items()):
+        for mode, model in sorted((modes or {}).items()):
+            rows.append(f"  - `{agent}` in mode `{mode}`: pass `model: \"{model}\"` in the delegation call.")
+    if not rows:
+        return "  - No per-mode overrides: every agent runs on the model of its definition."
+    return "\n".join(rows)
+
+
 def placeholder_values(ws: Workspace, agents: dict[str, Agent]) -> dict[str, str]:
     git = ws.config.get("git", {})
     return {
@@ -298,6 +309,7 @@ def placeholder_values(ws: Workspace, agents: dict[str, Agent]) -> dict[str, str
         "ENVIRONMENT": render_environment(ws),
         "TEST_COMMANDS": render_tests(ws),
         "CHECK_COMMANDS": render_checks(ws),
+        "MODE_MODELS": render_mode_models(ws),
         "AGENT_ROSTER": render_roster(agents),
     }
 
@@ -335,7 +347,8 @@ You are the **main Claude Code session** running the `/masflow` skill. Invocatio
 
 - **Delegate** with the `Agent` tool: `subagent_type` = agent name from the roster; `prompt` = the delegation payload (section 5) as JSON plus one sentence of instruction. Subagents have no memory of this conversation.
 - Run pipeline steps in the **foreground** (`run_in_background: false`): every step depends on the previous result. Only independent `researcher` calls may run in parallel (e.g. one `survey` per area during `map`).
-- For `researcher` in mode `survey` over a large scope, pass `model: "sonnet"` in the Agent call: inventory quality matters more than speed there.
+- **Per-mode models** (from `mode_models` in the config; the `model` parameter of the Agent call overrides the agent's own model for that call only):
+{{MODE_MODELS}}
 - **Human gates:** use `AskUserQuestion` (option choice, track confirmation, merge approval, retry budget exhausted). Speak to the Human in {{HUMAN_LANGUAGE}}, briefly; JSON is only for delegation payloads.
 - You may edit **only** files inside `{{STATE_DIR}}/`. Never edit application code, tests or configuration — not even "small" fixes.
 - `python3 MAS-Flow/scripts/masflow.py status` (from `{{WORKSPACE}}`) prints the parsed handoff state if you need a quick check.
@@ -377,8 +390,8 @@ def generate_claude(ws: Workspace, agents: dict[str, Agent], values: dict[str, s
         if agent.is_orchestrator:
             header = (
                 "---\nname: masflow\n"
-                f"description: {yaml_quote('MAS-Flow orchestrator. /masflow <goal|card> starts a story, /masflow next runs the next pipeline step from handoff.md, /masflow status and /masflow board show state, /masflow map [project|area] maps the product. Delegates every task to MAS-Flow subagents; never writes code.')}\n"
-                'argument-hint: "<goal|card> | next | status | board | map [scope]"\n---\n\n'
+                f"description: {yaml_quote('MAS-Flow orchestrator. /masflow <goal|card> starts a story, /masflow next runs the next pipeline step from handoff.md, /masflow status and /masflow board show state, /masflow map [project|area] maps the product, /masflow verify runs the daily full suites. Delegates every task to MAS-Flow subagents; never writes code.')}\n"
+                'argument-hint: "<goal|card> | next | status | board | map [scope] | verify"\n---\n\n'
                 f"<!-- {GENERATED_MARK} — edit MAS-Flow/agents or {CONFIG_NAME}, then run `masflow.py sync` -->\n\n"
             )
             content = header + full_prompt(agent, values, CLAUDE_ORCHESTRATOR_ADAPTER)
@@ -577,6 +590,11 @@ def cmd_check(ws: Workspace) -> None:
     for name in ws.config.get("models", {}):
         if name not in agents:
             problems.append(f"config.models: unknown agent '{name}'")
+    for name, modes in ws.config.get("mode_models", {}).items():
+        if name not in agents:
+            problems.append(f"config.mode_models: unknown agent '{name}'")
+        elif not isinstance(modes, dict) or not modes:
+            problems.append(f"config.mode_models.{name}: expected a non-empty {{mode: model}} object")
     for name in ws.config.get("claude_code", {}).get("agent_tools", {}):
         if name not in agents:
             problems.append(f"config.claude_code.agent_tools: unknown agent '{name}'")

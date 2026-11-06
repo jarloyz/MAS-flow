@@ -70,14 +70,17 @@ No other values exist. Agent-specific detail goes in `data`.
 ## 5. Slice cycle
 
 ```
-create_branch (once per story & repo) → [researcher] → executor (code + tests) → commit_slice
-  → tester (slice tests, full suite, AC coverage) → guard code_audit
+create_branch (once per story & repo) → [researcher] → executor (code + tests + small self-check) → commit_slice
+  → guard code_audit (static checks, no tests)
   → slice closed                            (or retry ×2 → fixer | rollback_slice)
 
-story close: tester full suite per repo → push_branch → merge_story (validated) → documenter
+story close: tester (capability group + tests related to the story's changed files) per repo
+  → push_branch → merge_story (validated) → documenter
+
+verify (daily, and before any production deploy): tester full suite per project on main → verify_log.md
 ```
 
-All slices of a story commit on one branch per repository (`masflow/<story>`). The orchestrator merges it into main only when every slice is closed with tester + guard approval and the final suite is green; conflicts or a moved main stop for the Human.
+All slices of a story commit on one branch per repository (`masflow/<story>`). The orchestrator merges it into main only when every slice is closed with a green self-check + guard approval and the story-close tests are green; conflicts or a moved main stop for the Human.
 
 A slice is ≤ 3-4 files, one project, one bounded context, one layer. Slice N+1 never starts before slice N is `closed`.
 
@@ -85,7 +88,7 @@ A slice is ≤ 3-4 files, one project, one bounded context, one layer. Slice N+1
 
 1. **Option choice** (Human) — planner presents scored options; nothing is designed before a choice.
 2. **Plan review** (guard, `full` track) — design errors are cheapest before code exists.
-3. **Tests** (tester) — slice tests + full suite + every AC mapped to a passing test.
+3. **Tests** — four tiers: slice self-check (executor), no tests in the audit (guard), capability group + related tests at story close (tester), full suites once a day and before a deploy (tester `verify`). Every AC is mapped to a passing test.
 4. **Audit** (guard) — deterministic checks first (linters/static analysis from config), then SOLID/DDD/OWASP/project rules/Active Rules.
 5. **Merge** (Human) — nothing reaches the main branch without approval.
 

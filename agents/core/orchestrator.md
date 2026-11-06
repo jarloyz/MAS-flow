@@ -59,8 +59,8 @@ If any `standard` criterion fails, the track is `full`.
 4. terminal_executor  commit_slice
 5. guard              code_audit                                  (rejected → executor, back to 4)
 6. Mark slice `closed` (self-check green + guard approved) in handoff §3, log it, move current_slice forward.
-   The tester runs once at story close (capability group + full suite, see below), not per slice
-   (unless the Human or the plan explicitly asks for slice mode).
+   The tester runs once at story close (capability group + related tests, see below), not per slice
+   (unless the Human or the plan explicitly asks for slice mode). Full suites belong to `verify` only.
    Retry budget: 2 executor rounds per slice. Then ask the Human: fixer | rollback_slice | stop.
 ```
 
@@ -71,14 +71,34 @@ The merge is yours to trigger — no Human gate — but only when everything is 
 ```
 1. Preconditions: every slice `closed` with a green self-check AND guard approval; handoff §5 has no open
    blocking issue; every slice branch commit is in the story branch. Any doubt → needs_human.
-2. tester             "scope": "story" — capability group (`masflow.py related-tests --project X --group <CAP-ID>`)
-                      + full suite once on the story branch of EACH repo touched (no new failures vs the
-                      known baseline in lessons/history)   (rejected → back to the slice cycle)
+2. tester             "scope": "story" — on the story branch of EACH repo touched, one run of
+                      `masflow.py related-tests --project X --base {{MAIN_BRANCH}} --group <CAP-ID>`
+                      (capability group + tests related to the story's changed files). NO full suite:
+                      that is the daily `verify`. No new failures vs the known baseline in
+                      lessons/history   (rejected → back to the slice cycle)
 3. terminal_executor  push_branch   for each repo touched
 4. terminal_executor  merge_story   for each repo touched, with "validated": true
                       (needs_human on conflicts or if {{MAIN_BRANCH}} moved — never force)
 5. documenter         Phase 6, with the merge commits per repo
 ```
+
+### Verify (full suites, once a day and before any production deploy)
+
+```
+1. tester             "scope": "verify" — full suite of every project on {{MAIN_BRANCH}}, one run each,
+                      failures compared by name with the known baseline.
+2. Append one line to {{STATE_DIR}}/verify_log.md (create it with a `# Verify log` heading if missing):
+   `- <date time> <green|red> — <project>@<sha> <passed>/<failed> (<duration>s) ...; regressions: <n>`
+3. success  → report to the Human; nothing else.
+   rejected → every regression becomes an Inbox card (documenter, one card per root cause, naming the test,
+              the failing commit range since the previous green verify, and the likely story). Ask the Human
+              whether to fix it before the next story starts.
+```
+
+- Trigger it with `/masflow verify` at the end of the working day, or when the Human asks.
+- **Deploy gate:** never ask for a production deploy (and tell the Human not to approve one) unless the last line
+  of `verify_log.md` is `green` and its commits equal the `{{MAIN_BRANCH}}` commits being deployed. If a story was
+  merged after it, run `verify` first.
 
 ---
 
@@ -135,7 +155,8 @@ Agents start with **no memory**. Every delegation must be self-contained:
 - **`map [project|area]`** — product cartography, no code changes: (1) `researcher` mode `survey` for the scope (split large projects into one call per area, in parallel); (2) `documenter` mode `map` with all survey results. Report coverage and gaps to the Human. Run it on first adoption and whenever `masflow.py check` reports map drift.
 - **`board`** — show `{{BOARD}}` columns and suggest the next Ready card.
 - **`next`** (or no argument) — read the handoff and run `next_agent` with `next_task`. If `status` is `awaiting_human`, ask the pending question instead.
-- **`status`** — report story, capability, track, phase, status, slices (closed/total), next agent, open issues, and board counts. Do not delegate.
+- **`status`** — report story, capability, track, phase, status, slices (closed/total), next agent, open issues, board counts and the last `verify_log.md` line (flag it when stories were merged after it). Do not delegate.
+- **`verify`** — run the Verify procedure (section 3). Allowed while a story is idle or between slices; it does not change the handoff front matter, only the Execution Log when a story is open.
 
 ---
 
@@ -150,7 +171,8 @@ Pick the executor named in the slice plan. If the plan names none, choose the mo
 ## 9. ANTI-PATTERNS
 
 - Writing or fixing code, tests, plans or docs yourself.
-- Skipping `guard`, the executor self-check, or the story-close `tester`. Running `merge_story` before every slice is closed (green self-check + guard approval) and the final suite is green.
+- Skipping `guard`, the executor self-check, or the story-close `tester`. Running `merge_story` before every slice is closed (green self-check + guard approval) and the story-close tests are green.
+- Running full suites outside `verify` (unless the Human asks), or asking for a production deploy without a green `verify` on the commits being deployed.
 - Pushing or merging {{MAIN_BRANCH}} directly, using `--force`, or one branch per slice.
 - Calling an executor without the story branch checked out in the slice's repo.
 - Letting any agent other than `researcher` search the codebase.

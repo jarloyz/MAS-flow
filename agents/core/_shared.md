@@ -63,6 +63,21 @@ updated_at: 2026-01-31
 
 {{ENVIRONMENT}}
 
+### Test budget (binding)
+
+Running the tests is cheap; the agent work around each run (reading output, re-running, comparing) is what costs time and quota. Run only what the tier below allows.
+
+| Tier | Who | When | What runs |
+|---|---|---|---|
+| 1. Slice | executor / fixer self-check | every slice | the slice's new or changed test files + `masflow.py related-tests --only <file>` for each touched file. Nothing wider unless the slice spec names that exact run. |
+| 2. Slice audit | guard `code_audit` | every slice | **no tests.** Static checks only (pint `--test`, phpstan) on the slice files. Run a test only when the executor's `self_check` is missing, red or contradicts the diff, and say why. Never a full suite. |
+| 3. Story close | tester `"scope": "story"` | once, before `merge_story` | the capability group + the tests related to every file the story changed (`masflow.py related-tests --project <p> --base <main> --group <CAP-ID>`), per repo touched. **No full suite.** |
+| 4. Verify | tester `"scope": "verify"` | once a day (end of day) and before any production deploy | the full suite of every project on `{{MAIN_BRANCH}}`, compared by test name against the known baseline failures. |
+
+- A production deploy needs a green `verify` run on the exact `{{MAIN_BRANCH}}` commits being deployed (no merge after it).
+- Full suites run only in tier 4 or when the Human explicitly asks for one.
+- **Real-data / matrix gates (orchestrator):** only the rows the change can affect; reuse earlier run files; merge gates that measure the same thing.
+
 ### Universal rules
 
 1. Read the handoff front matter before acting. Do only the task you were given, for the story and slice you were given.

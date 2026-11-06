@@ -30,13 +30,14 @@ The Architect's plan is divided into numbered slices. Each slice completes the f
 
 1. **Terminal Executor** → `create_branch` (`masflow/<HU>`, one branch per story per repository; later slices check it out).
 2. **Researcher** → fetches the pointers listed for this slice.
-3. **Specialized Executor** → edits files directly on the branch and writes the tests for its code. If context is missing it returns `needs_info` and goes back to step 2.
+3. **Specialized Executor** → edits files directly on the branch, writes the tests for its code and runs a small self-check (its own tests + the tests related to the files it touched, static checks). If context is missing it returns `needs_info` and goes back to step 2.
 4. **Terminal Executor** → `commit_slice`.
-5. **Tester** → runs the slice tests and the full suite, and checks AC coverage. Failures go back to the Executor (then commit again).
-6. **Guard** → audits SOLID, DDD boundaries, OWASP and project rules. Rejections go back to the Executor (then commit again).
-7. The slice is marked `closed` in `handoff.md` and the next slice starts. After two or more failed rounds, the Human chooses between the **Fixer**, `rollback_slice`, or stopping.
+5. **Guard** → audits SOLID, DDD boundaries, OWASP and project rules with static checks only (no tests). Rejections go back to the Executor (then commit again).
+6. The slice is marked `closed` in `handoff.md` and the next slice starts. After two or more failed rounds, the Human chooses between the **Fixer**, `rollback_slice`, or stopping.
 
-**Story close:** the **Tester** runs the full suite on the story branch of each repository touched, then the **Terminal Executor** runs `push_branch` and `merge_story` (PR + merge into main). Conflicts or a moved main stop for the Human. Then the Documenter consolidates.
+**Story close:** the **Tester** runs the capability's test group plus the tests related to every file the story changed (no full suite) on the story branch of each repository touched, then the **Terminal Executor** runs `push_branch` and `merge_story` (PR + merge into main). Conflicts or a moved main stop for the Human. Then the Documenter consolidates.
+
+**Verify (daily):** `/masflow verify` — the **Tester** runs the full suite of every project on main once, at the end of the day and before any production deploy, and compares failures with the known baseline. Regressions become Inbox cards; a deploy needs a green verify on the exact commits being deployed.
 
 ## 6. Consolidation
 The **Documenter**, once every slice is merged:
