@@ -161,6 +161,21 @@ class CommandsTest(unittest.TestCase):
             cmds,
         )
 
+    def test_jest_fallback_uses_sail_prefix_of_file_template(self) -> None:
+        project = {"name": "x", "path": "x", "tests": {"file": "cd {workspace}/host && sail test /var/www/other/tests/{file}"}}
+        cmds = rt.build_commands(project, expand, ["apps/web/tests/a.test.js"], [])
+        self.assertEqual(["cd /ws/host && sail bash -c 'cd /var/www/other/apps/web && npx jest tests/a.test.js'"], cmds)
+
+    def test_jest_without_sail_runs_on_project(self) -> None:
+        project = {"name": "x", "path": "x", "tests": {"file": "cd {project} && docker compose exec app /var/www/app/run {file}"}}
+        cmds = rt.build_commands(project, expand, ["apps/web/tests/a.test.js"], [])
+        self.assertEqual(["cd /ws/proj/apps/web && npx jest tests/a.test.js"], cmds)
+
+    def test_explicit_jest_template_wins(self) -> None:
+        project = dict(ENTERPRISE, tests={**ENTERPRISE["tests"], "jest": "cd {project}/{app} && yarn jest {files}"})
+        cmds = rt.build_commands(project, expand, ["apps/shop/tests/cart.test.js"], [])
+        self.assertEqual(["cd /ws/proj/apps/shop && yarn jest tests/cart.test.js"], cmds)
+
     def test_hostile_names_are_quoted(self) -> None:
         hostile = "tests/a;rm -rf x Test.php"
         spaced = "tests/with space Test.php"

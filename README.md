@@ -82,11 +82,22 @@ Unlike traditional human-oriented methodologies (like Scrum), which use sprints 
 
 ## ⚡ Adopting MAS-Flow in a project
 
+### Requirements
+
+- **Python 3.10+** (standard library only, nothing to `pip install`) for `scripts/masflow.py` and the hooks.
+- **Git**: every project listed in the config must be a git repository with a main branch (`main` by default); slices live on branches.
+- **A runtime**: [Claude Code](https://claude.com/claude-code) (subagents, `/masflow` skill, hooks) or OpenCode. The default agent models are Claude models; change them under `models` in the config.
+- Your project's own toolchain (test runner, linters, containers) — MAS-Flow only calls the commands you put in the config.
+
+### Install
+
 ```bash
-cp -r MAS-Flow /path/to/workspace/          # or add it as a git submodule
-cd /path/to/workspace
-python3 MAS-Flow/scripts/masflow.py init     # asks project name, packs, test command…
+cd /path/to/workspace                        # the folder that contains your project(s)
+git clone https://github.com/jarloyz/MAS-flow.git MAS-Flow   # or a git submodule
+python3 MAS-Flow/scripts/masflow.py init     # asks project name, packs, test command… (--yes = defaults)
 ```
+
+The folder must be named `MAS-Flow` and sit at the workspace root: the generated hooks and agents reference `MAS-Flow/...` paths.
 
 `init` creates `masflow.config.json`, the `.masflow/` state files and the runtime agents, and makes `CLAUDE.md` import the generated MAS-Flow instructions. Then:
 

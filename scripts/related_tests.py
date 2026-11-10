@@ -193,6 +193,12 @@ def _container_root(template: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _sail_prefix(template: str) -> str | None:
+    """Host part of a containerized test template, up to the sail binary (`cd X && ./vendor/bin/sail`)."""
+    match = re.match(r"^(.*?\bsail)\s+(?:test|artisan\s+test)\b", template.strip())
+    return match.group(1) if match else None
+
+
 def _jest_commands(project: dict, expand: Callable[[str], str], js_tests: list[str]) -> list[str]:
     tests_cfg = project.get("tests", {})
     by_app: dict[str, list[str]] = {}
@@ -200,14 +206,16 @@ def _jest_commands(project: dict, expand: Callable[[str], str], js_tests: list[s
         match = JS_APP.match(test)
         by_app.setdefault(match.group(1) if match else "", []).append(test)
     commands = []
-    container = _container_root(tests_cfg.get("file", ""))
+    file_template = tests_cfg.get("file", "")
+    container = _container_root(file_template)
+    sail = _sail_prefix(file_template)
     for app, tests in sorted(by_app.items()):
         rel = " ".join(shlex.quote(t[len(app) + 1:] if app else t) for t in tests)
         if tests_cfg.get("jest"):
             commands.append(expand(tests_cfg["jest"]).replace("{app}", shlex.quote(app)).replace("{files}", rel))
-        elif container:
+        elif container and sail:
             inner = f"cd {shlex.quote(container + '/' + app if app else container)} && npx jest {rel}"
-            commands.append(expand("cd {workspace}/mudrais && ./vendor/bin/sail bash -c ") + shlex.quote(inner))
+            commands.append(expand(sail) + " bash -c " + shlex.quote(inner))
         else:
             commands.append(expand("cd {project}") + (f"/{shlex.quote(app)}" if app else "") + f" && npx jest {rel}")
     return commands
