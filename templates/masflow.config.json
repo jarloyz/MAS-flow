@@ -4,10 +4,28 @@
   "human_language": "English",
   "state_dir": ".masflow",
   "packs": [],
-  "runtimes": ["claude-code"],
+  "runtimes": [
+    "claude-code"
+  ],
   "git": {
     "branch_prefix": "masflow/",
     "main_branch": "main"
+  },
+  "budgets": {
+    "story_slices": 6,
+    "handoff_kb": 40,
+    "story_kb": 6,
+    "plan_kb": 12,
+    "slice_spec_kb": 6,
+    "log_line_chars": 240,
+    "active_rules": 30,
+    "active_rules_kb": 8
+  },
+  "gates": {
+    "guard_code_audit": "risk"
+  },
+  "parallel": {
+    "slices": 1
   },
   "projects": [
     {
@@ -21,7 +39,9 @@
         "file": "cd {project} && npm test -- {file}",
         "filter": "cd {project} && npm test -- -t \"{filter}\""
       },
-      "checks": []
+      "checks": [],
+      "slice_checks": [],
+      "acceptance": []
     }
   ],
   "environment": [
@@ -35,8 +55,30 @@
   "disabled_agents": [],
   "claude_code": {
     "permissions": {
-      "allow": [],
-      "deny": ["Bash(git push --force:*)", "Bash(git reset --hard:*)"]
+      "allow": [
+        "Bash({masflow} status:*)",
+        "Bash({masflow} check:*)",
+        "Bash({masflow} stats:*)",
+        "Bash({masflow} log:*)",
+        "Bash({masflow} related-tests:*)",
+        "Bash({masflow} checks:*)",
+        "Bash({masflow} git create-branch:*)",
+        "Bash({masflow} git commit-slice:*)",
+        "Bash({masflow} git rollback-slice:*)",
+        "Bash({masflow} git push-branch:*)",
+        "Bash({masflow} git merge-story:*)",
+        "Bash({masflow} verify:*)",
+        "Bash({masflow} archive-story:*)",
+        "Bash(git status:*)",
+        "Bash(git diff:*)",
+        "Bash(git log:*)",
+        "Bash(git show:*)"
+      ],
+      "deny": [
+        "Bash({masflow} verify --accept-baseline:*)",
+        "Bash(git push --force:*)",
+        "Bash(git reset --hard:*)"
+      ]
     }
   }
 }

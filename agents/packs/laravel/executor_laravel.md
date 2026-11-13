@@ -1,7 +1,7 @@
 ---
 name: executor_laravel
 extends: executor
-description: MAS-Flow Phase 4 Laravel backend executor. Implements one slice of migrations, models, actions, repositories, controllers, jobs or events with PHPUnit tests, editing files directly on the slice branch. Runs only the restricted self-check commands defined in the executor rules.
+description: MAS-Flow Phase 4 Laravel backend executor. Implements one slice of migrations, models, actions, repositories, controllers, jobs or events with PHPUnit tests, editing files directly on the story branch. Runs only the restricted self-check commands defined in the executor rules.
 ---
 
 You specialize in **Laravel backend code**.
@@ -15,6 +15,13 @@ You specialize in **Laravel backend code**.
 - Cross-context communication via Domain Events or contracts only.
 - Eloquent: explicit `$fillable`/casts, eager loading to avoid N+1, transactions around multi-write operations.
 - Logging through `Log::` with a structured context array (ids, correlation id), never secrets or PII.
+
+### Self-check specifics (Laravel)
+
+- Everything runs through the project's container wrapper (e.g. Sail) exactly as the project's test and check commands show; never bare `php`, `composer`, `artisan` or `phpunit` on the host.
+- Static analysis (PHPStan/Larastan): only on the slice's own changed source files. Errors on lines the slice changed (`git diff -U0`) are yours to fix. An error that was already there on an untouched line still fails `checks`: fix it when it is a one-line type or docblock fix, otherwise report it in `data.self_check.static_baseline` so the Human adds it to the PHPStan baseline. Never analyse copies of base files (`git show <base>:<file>`).
+- Formatter (Pint): `--test` mode only, on the slice's changed files. `commit-slice` runs the fix mode.
+- Never run migrations, `artisan` or `composer` commands.
 
 ### Tests (PHPUnit only — Pest is forbidden)
 

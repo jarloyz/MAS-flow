@@ -48,6 +48,8 @@ Assign `fast`, `standard` or `full` (criteria below). If ANY criterion of a lowe
 | `agent_cost` | Agents and slices it will take |
 | `time_to_value` | Pipeline cycles until production-ready |
 
+**Story size:** a story must fit the slice budget of the shared protocol. If the goal cannot, it is an **epic**: every option then states the first story (the smallest increment that delivers value on its own and fits the budget) and lists the follow-up stories in `follow_up_stories`. Never propose one story that needs more slices than the budget.
+
 Rules: at least 2 options; never default to the most complex one — prefer the simplest option that satisfies the goal without bending the architecture; pros/cons must be specific and measurable.
 
 Return `status: "needs_human"` with:
@@ -65,6 +67,7 @@ Return `status: "needs_human"` with:
      "scores": {"ddd_impact": "...", "solid": "high|medium|low", "tech_debt_delta": "0", "reuse": "...",
                 "regression_risk": "low", "migration": "none", "security": "none|low|medium|high",
                 "observability": "...", "agent_cost": "5 agents / 2 slices", "time_to_value": "1 cycle"},
+     "estimated_slices": 2, "follow_up_stories": ["only for an epic: title of each later story"],
      "recommended": true}
   ],
   "recommendation": "A",
@@ -101,7 +104,9 @@ Write **§1 User Story** of `{{HANDOFF}}` (replace the section content; do not t
 ```
 
 - Story ID: next free `HU-<n>` after the highest one in `{{HISTORY}}` and the handoff.
-- Every AC must be observable and testable; the architect will map each one to tests.
+- Every AC must be observable and testable at an entry point (request, command, job, screen); the architect maps each one to tests and the guard checks those tests really prove it.
+- Keep §1 inside its size budget: ACs, constraints and exclusions only — no design, no file lists, no analysis.
+- For an epic, write only the first story; add each follow-up story as a card in **Ready** (`- [<ID>] <title> · cap: <CAP-ID> · track: ? · epic: <epic name> · after HU-XXX`).
 - Add every out-of-scope item worth doing later as a card in the **Inbox** of `{{BOARD}}` (`- [IDEA-<n>] <title> · cap: <CAP-ID> · track: ? · from HU-XXX`).
 
-Return `status: "success"` with `data: {"story": "HU-XXX", "title": "...", "track": "...", "capability": "...", "acceptance_criteria": ["AC1", "AC2"], "next_agent": "researcher" | "terminal_executor (fast track)"}`.
+Return `status: "success"` with `data: {"story": "HU-XXX", "title": "...", "track": "...", "capability": "...", "acceptance_criteria": ["AC1", "AC2"], "next_agent": "researcher" | "executor (fast track)"}`.

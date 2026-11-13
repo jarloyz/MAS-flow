@@ -1,57 +1,77 @@
 # MAS-Flow in Action: A Practical Example
 
-To truly understand how to orchestrate MAS-Flow, let's walk through a concrete example. 
-Imagine you (the Human Orchestrator) want to add a new feature: **"Video Uploads with Thumbnail Generation"**. 
-Your project uses **Laravel (PHP)** for the API and **Python** for media processing scripts.
+A concrete walk through one story. The project is a **Laravel (PHP)** API with **Python** media scripts, running MAS-Flow on Claude Code; the Human wants **video uploads with thumbnail generation**.
 
-Here is how you use AI Assistants (like Gemini, Claude Code, or Cursor) to contextualize your ideas and orchestrate the flow.
+Lines starting with `masflow` are deterministic commands (`python3 MAS-Flow/scripts/masflow.py …`) run by the orchestrator; everything else is an agent or the Human.
 
-## Step 0: Ideation (The Brainstorming)
-Before engaging the formal MAS-Flow agents, you use your preferred AI (e.g., Gemini or Claude) purely as a sounding board to clarify your own thoughts.
-* **You:** *"I want to add video uploads to my Laravel app. I'm thinking of using a Python script to generate the thumbnail using FFmpeg. Is this a good approach?"*
-* **AI:** *"Yes. You can use Laravel's storage to save the raw file, then dispatch a background job that executes your Python FFmpeg script to prevent blocking the API request."*
+## 1. Goal → options → story
 
-Now that your idea is clear and contextualized, you start the formal MAS-Flow pipeline.
+```
+/masflow Add video uploads with automatic thumbnail generation
+```
 
-## Step 1: Context Gathering (The Researcher)
-You open a terminal or IDE chat, set the **Researcher** persona, and point it to your workspace.
-* **You (Prompt):** *"We need to add Video Uploads. Check our codebase (`history.md` and `/src`) to see how we currently handle media, and write your findings in `handoff.md`."*
-* **Researcher Agent:** Scans the code. 
-* **Result in `handoff.md`:** 
-  > *Researcher Notes: We currently have an `ImageService.php` that uploads to S3. We should create a new `VideoService.php`. The Python scripts live in `/scripts/media/`.*
+- **Planner** reads the maps and the architecture and classifies the goal as `full` (new contract, a queue job, file upload = security surface). It returns three scored options:
+  - A — synchronous thumbnail in the request (simple, blocks the API);
+  - B — upload + queued job that calls the existing Python FFmpeg script (recommended, 4 slices);
+  - C — external transcoding service (more capability, new dependency and cost).
+- **Human** picks **B**.
+- **Planner** writes `HU-045` in handoff §1 with `AC1` (a valid upload is stored and answers 202), `AC2` (a thumbnail exists after the job runs), `AC3` (non-video or oversized files are rejected with 422), `AC4` (only the owner can upload to their library).
 
-## Step 2: Task Definition (The Documenter)
-You switch the persona to the **Documenter**.
-* **You (Prompt):** *"Read the notes in `handoff.md` and create a structured User Story with Acceptance Criteria."*
-* **Result in `handoff.md`:** The agent replaces the raw notes with a formal `[US-045] Video Upload Endpoint` ticket.
+## 2. Research
 
-## Step 3: Technical Strategy (The Architect)
-You open a session with a high-reasoning model (like GPT-4o, Gemini Advanced, or Claude 3.5 Sonnet) and set the **Architect** persona. You ensure it reads `core_architecture.md`.
-* **You (Prompt):** *"Read US-045 in `handoff.md`. Based on our `core_architecture.md`, write a step-by-step implementation plan in the handoff file."*
-* **Result in `handoff.md`:**
-  > 1. Create `VideoService.php` (PHP).
-  > 2. Create API Endpoint in `VideoController.php` (PHP).
-  > 3. Create `generate_thumbnail.py` in `/scripts/media/` (Python).
+- **Researcher** returns pointers: `ImageService.php` (the existing upload pattern), the storage config, `scripts/media/` (Python scripts), the queue setup, the existing upload tests. It also reports an existing equivalent: `MediaStorage` already wraps S3.
 
-## Step 4: The Build Phase (Specialized Executors)
-Because the plan spans two different technologies, you invoke your Specialized Executors separately. This drastically reduces prompt confusion and token costs.
+## 3. Design, reviewed before any code
 
-* **Action 1 (Laravel Executor):** You set the `Laravel Executor` persona.
-  * **You (Prompt):** *"Execute Step 1 and 2 from `handoff.md`. Do not touch the Python step."*
-  * **Result:** The agent writes the PHP API code flawlessly, adhering to your Laravel structures.
-  
-* **Action 2 (Python Executor):** You set the `Python Executor` persona.
-  * **You (Prompt):** *"Execute Step 3 from `handoff.md`. You only need to write the FFmpeg thumbnail script."*
-  * **Result:** The agent writes the perfect Python script.
+- **Architect** writes the plan in handoff §3 and one spec per slice:
 
-## Step 5: Quality Assurance (Tester & Guard)
-* **Tester Action:** *"Review the new `VideoService.php` and write a PHPUnit test."*
-* **Guard Action:** You set the Guard persona, attach `core_architecture.md` and the new files.
-  * **You (Prompt):** *"Verify the new PHP and Python files against the core architecture constraints."*
-  * **Guard Output:** *"APPROVED. PHP code properly uses Repositories (DDD) and Python code has type hints as required."*
+  | # | Title | Layer | Wave | Risk |
+  |---|---|---|---|---|
+  | 1 | `videos` table + model | persistence | 1 | low |
+  | 2 | `ThumbnailGenerator` contract + Python adapter | infrastructure | 1 | low |
+  | 3 | `StoreVideo` action + `GenerateThumbnail` job | domain | 2 | low |
+  | 4 | Upload endpoint: request validation + policy | interface | 3 | **high** |
 
-## Step 6: Consolidation
-Everything is approved. As the Human Orchestrator:
-1. You merge the code into your `main` branch.
-2. You copy `[US-045]` from `handoff.md` and paste it at the top of `history.md`.
-3. You **delete everything inside `handoff.md`**, leaving it completely blank. The ephemeral context is destroyed, and the system is fresh and ready for US-046.
+  `slices/slice-4.md` names the route, the Form Request rules (mime, size), the policy method, and the tests `test_owner_can_upload` (AC1, AC4), `test_other_user_gets_403` (AC4), `test_rejects_non_video` (AC3) — signatures and test names, no method bodies.
+- In parallel: **Guard** `plan_review` approves (every AC mapped, slice 4 correctly marked high-risk); **Security** `threat_model` rejects: the plan has no control for a file whose extension lies about its content. The **Architect** revises slice 4 (validate by content sniffing, add `test_rejects_disguised_executable`); both reviews pass.
+
+## 4. Slices
+
+```
+masflow git create-branch --project api                     → masflow/HU-045
+executor_laravel (slice 1)                                  → migration, model, tests; self-check green
+masflow git commit-slice --project api --slice 1 --files …
+masflow checks --project api --slice 1 --files …            → formatter + static analysis: pass
+masflow log … --slice 1 --slice-status closed
+```
+
+Slice 2 (same wave) and slice 3 follow the same four steps — no model reads them again until the story close. Slice 4 is high-risk, so after its checks:
+
+- **Guard** `code_audit` rejects: the controller checks ownership inline instead of through the policy. Back to **executor_laravel** with the finding; it fixes it; commit, checks, and the Guard approves.
+
+## 5. Story close — three gates in parallel
+
+- **Security** `story_audit` reads the whole diff: no new dependencies, no secrets, the Python script is invoked with an argument array (no shell injection). Approves with one residual risk (very large uploads rely on the web server limit).
+- **Guard** `story_audit`: plan conformance holds; AC proof finds `AC2` **weak** — its test asserts that the job was dispatched, not that a thumbnail exists. A warning, logged as an open issue and a follow-up card.
+- **Tester**: capability group + related tests, 58 passed; acceptance command (a real upload against the local stack) passes.
+
+```
+masflow git push-branch --project api
+masflow git merge-story --project api --validated          → PR opened and merged into main
+```
+
+## 6. Consolidation
+
+- **Documenter** appends `HU-045` to `history.md`, registers `StoreVideo`, `GenerateThumbnail` and `ThumbnailGenerator` in the functional map, adds the capability `CAP-MEDIA-02` to the product map, moves the card to Done and adds an Inbox card for the weak `AC2` test. The inline-ownership-check rejection has now been seen twice, so it proposes `CHECK-7`: an architecture test that forbids ownership comparisons in controllers.
+- `masflow archive-story` moves the handoff and the slice specs to `archive/HU-045/`. The next story starts in a fresh session.
+
+## 7. End of day
+
+```
+/masflow verify     → masflow verify: api 1 412 tests, failures = baseline, green
+/masflow stats      → lead time 3.1 h; guard code_audit 1 run / 1 rejected; architect 21 % of agent time
+```
+
+## What the Human did
+
+Chose option B. Everything else ran without waiting — and would have stopped for a decision if a slice had failed twice, a gate had escalated, or the merge had not been clean.

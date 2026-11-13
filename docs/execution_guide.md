@@ -1,70 +1,68 @@
 # Execution Guide: Running MAS-Flow
 
-Since MAS-Flow is a methodology and not a rigid software library, "running" an agent means assigning a specific Persona (System Prompt) to an LLM and feeding it the exact files it needs. 
+MAS-Flow is a methodology with a reference implementation. There are two ways to run it, and both follow the same [Protocol](protocol.md):
 
-You can execute MAS-Flow manually in a chat interface (like ChatGPT or Claude), via an AI-powered IDE (like Cursor, Windsurf, or Copilot), or by building a custom script (using LangChain, CrewAI, etc.).
+1. **With a supported runtime** (Claude Code, OpenCode) — `masflow.py sync` generates the agents and an AI orchestrator drives the pipeline. See [Running MAS-Flow with Claude Code](claude_code.md).
+2. **By hand, or with your own framework** — you (or your script) play the orchestrator: give each agent its prompt and its inputs, run the `masflow.py` commands yourself, and keep `handoff.md` true. This page covers that case.
 
-## 1. How to Send Information to Agents (Context Injection)
+## 1. Agents are the prompts in `agents/`
 
-Agents in MAS-Flow **do not** need the entire project codebase. You send them information by explicitly attaching or providing specific files. This prevents context bloat.
+Do not write personas from memory: each role is defined by its file in [`agents/core/`](../agents/core/) (plus stack specializations in `agents/packs/`), with the shared protocol [`_shared.md`](../agents/core/_shared.md) appended. `masflow.py sync` renders them for a workspace — placeholders such as `{{HANDOFF}}` or `{{TEST_COMMANDS}}` replaced with your paths and commands — into `.claude/agents/` or `.opencode/agents/`. With another framework, use those rendered files as system prompts.
 
-| Agent Role | Files to Provide (Context) |
+## 2. What each agent receives
+
+Agents do **not** need the whole codebase, and they do not need the whole state directory either. Give each one only this:
+
+| Agent | Reads |
 | --- | --- |
-| **Researcher** | `history.md`, User's raw request, Codebase search tools |
-| **Documenter** | `history.md`, `handoff.md` (with Researcher's notes) |
-| **Architect** | `core_architecture.md`, `handoff.md` (with User Stories) |
-| **Executor** | `handoff.md` (Architect's plan), specific source code files |
-| **Tester & Guard** | `core_architecture.md`, recently modified source code files |
+| **Planner** | handoff, `core_architecture.md`, product/functional/repository maps, lessons, board |
+| **Researcher** | handoff §1, repository and functional maps, the codebase (search) |
+| **Architect** | handoff §1-§2, `core_architecture.md`, product and functional maps, lessons, the files named as pointers |
+| **Executor / Fixer** | its slice spec (`slices/slice-<id>.md`), the pointers and files of that slice, `core_architecture.md`, Active Rules |
+| **Guard** | `core_architecture.md`, Active Rules, handoff §1 and §3, and — by mode — the slice specs, one slice's files, or the story diff |
+| **Security** | `core_architecture.md`, handoff §1 and §3, the slice specs (threat model) or the whole story diff (audit) |
+| **Tester** | handoff §1 and the AC traceability table, the test commands |
+| **Documenter** | handoff, history, maps, lessons, board |
 
-## 2. Base System Prompts (Personas)
+Every agent ends its answer with the **result envelope** (`status`, `summary`, `data`, `handoff_log`); the status decides the next step.
 
-To instantiate an agent, configure your LLM or script with these base system prompts:
+## 3. Advancing the flow by hand
 
-### 📐 The Architect
-```text
-You are the MAS-Flow Architect. 
-Your job is to read the User Story in `handoff.md` and the technical constraints in `core_architecture.md`. 
-Output a step-by-step technical implementation plan. Do not write the final code. 
-Ensure your plan strictly adheres to the design patterns and stack defined in the architecture.
+```bash
+M="python3 MAS-Flow/scripts/masflow.py"
 ```
 
-### 💻 The Specialized Executor (Example: Laravel/PHP)
-```text
-You are the MAS-Flow Laravel Specialized Executor. 
-Read the step-by-step plan in `handoff.md`. 
-Execute ONLY the steps relevant to your stack. Write production-ready code. 
-Do not modify the architecture. If you encounter an ambiguity, stop and ask the Orchestrator. 
-Update the `handoff.md` status when finished.
-```
+1. **Plan.** Run the *Planner* with your goal. Choose one of its options; run it again with your choice so it writes the User Story.
+   `$M log --agent planner --status success --message "story written" --set story=HU-12 --set track=full --set phase=2 --set status=in_progress --set next_agent=researcher`
+2. **Research.** Run the *Researcher*; copy its pointers into handoff §2.
+3. **Design** (`full` track). Run the *Architect* (plan in §3, one spec per slice), then the *Guard* in `plan_review` and the *Security* auditor in `threat_model` — at the same time if you can. Rejected → back to the Architect with the findings.
+4. **Each slice:**
+   ```bash
+   $M git create-branch --project app
+   #   run the slice's Executor with its slice spec
+   $M git commit-slice --project app --slice 1 --message "repository contract" --files app/Domain/X.php tests/XTest.php
+   $M checks --project app --slice 1 --files app/Domain/X.php tests/XTest.php
+   #   high-risk slice only: run the Guard in code_audit
+   $M log --agent orchestrator --status success --message "slice 1 closed" --slice 1 --slice-status closed --set current_slice=2
+   ```
+   A `rejected` result goes back to the same Executor with the exact findings (two rounds, then decide: Fixer, `git rollback-slice`, or stop).
+5. **Story close.** Run *Security* `story_audit`, *Guard* `story_audit` and the *Tester* (`scope: story`) — in parallel if you can. All green:
+   ```bash
+   $M git push-branch --project app
+   $M git merge-story --project app --validated
+   ```
+6. **Consolidate.** Run the *Documenter* (Phase 6), then `$M archive-story`.
+7. **End of day:** `$M verify`. **Any time:** `$M status`, `$M check`, `$M stats`.
 
-### 🛡️ The Guard
-```text
-You are the MAS-Flow Guard. 
-Review the recently modified code against the strict rules defined in `core_architecture.md`. 
-If a rule is broken (e.g., missing a Repository, violating SOLID, or wrong formatting), output a detailed error log. 
-If all rules are respected, output exactly: "APPROVED".
-```
+`git`, `checks`, `verify` and `archive-story` write their own Execution Log line; `log` is for agent results and for moving the front matter. `checks --no-log` runs the same checks without recording them (it is what an executor uses in its self-check).
 
-## 3. Advancing the Flow (The Human Orchestrator's Job)
+## 4. Parallelism
 
-The Human Orchestrator drives the process. Here is the step-by-step mechanical execution of a flow:
+- **Inside a story:** the plan review and the threat model run together; so do the three story-close gates. Slices of the same wave (no shared file, no open dependency) can run together when the projects' test environments tolerate concurrent runs — set `parallel.slices` in the config.
+- **Across stories:** the board has a WIP limit of one story per workspace, because one `handoff.md` describes one story. To work on two stories at once, use two working copies of the workspace (for example `git worktree`), each with its own state directory, and merge them one after the other: the second story must be re-validated on top of the new main (`merge-story` stops and tells you).
 
-1. **Invoke:** The Human opens a session with the *Architect* prompt, attaches `core_architecture.md` and `handoff.md`, and requests the plan.
-2. **Evaluate:** The Human reads the generated step-by-step plan. 
-3. **Commit to Handoff:** If the human approves the plan, they ensure the plan is saved into `handoff.md` (if using an AI IDE with file-writing tools, the agent might do this itself).
-4. **Switch Persona:** The Human changes the system prompt to the *Executor*, points it to the newly updated `handoff.md`, and says: *"Execute the plan"*.
-5. **Feedback Loop Cycle:** The Human repeats this process for the Tester and Guard. If an agent fails (e.g., the Guard says "Rule Broken"), the Human takes the Guard's error log, goes back to the Executor session, pastes the error, and says: *"Fix this error raised by the Guard"*.
-6. **Cleanup:** Once the code is merged, the human manually adds a summary to `history.md` and wipes the contents of `handoff.md` clean for the next task.
+## 5. Keeping it fast
 
-## 4. Parallel Execution (Scaling MAS-Flow)
-
-A common question is: *Can I execute multiple tasks or User Stories in parallel?* 
-
-**Yes, through Git Branching.** 
-
-Because `handoff.md` is a physical file in your repository, attempting to run three User Stories simultaneously on the `main` branch would result in file conflicts and confused agents. To scale MAS-Flow for parallel execution:
-
-1. **Create a Branch per Task:** For each User Story, check out a new branch (e.g., `git checkout -b feature/US-045`).
-2. **Isolated Handoffs:** Each branch now has its own isolated `handoff.md` file. 
-3. **Parallel Orchestration:** You can have an AI session open for `feature/US-045` (working on frontend) and a completely separate AI session for `feature/US-046` (working on backend). The agents won't interfere with each other because they are reading from different branches.
-4. **Merge and Sync:** When a branch passes the Guard and Tester, you merge it into `main`. Then, update the `history.md` in `main` so that all future branches inherit the updated historical context.
+- Start each story in a fresh orchestrator session; the state is on disk.
+- Keep the handoff, the slice specs and the Active Rules inside their budgets — `$M check` tells you when they are not.
+- Look at `$M stats` before changing a gate or a model: it shows which agents take the time and which gates actually reject.
