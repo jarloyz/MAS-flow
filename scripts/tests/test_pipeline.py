@@ -415,6 +415,26 @@ class CliTest(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("budget: handoff §1 User Story", output)
 
+    def test_agent_skills_are_preloaded_and_must_be_installed(self):
+        config_file = self.root / "masflow.config.json"
+        config = json.loads(config_file.read_text(encoding="utf-8"))
+        config.setdefault("claude_code", {})["agent_skills"] = {"executor": ["web-guide"]}
+        config_file.write_text(json.dumps(config), encoding="utf-8")
+
+        code, output = self.run_cli("check")
+        self.assertEqual(code, 1)
+        self.assertIn("skill 'web-guide' is not installed", output)
+
+        skill = self.root / ".claude" / "skills" / "web-guide"
+        skill.mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: web-guide\ndescription: x\n---\n", encoding="utf-8")
+        self.assertEqual(self.run_cli("sync")[0], 0)
+        self.assertIn("skills:\n  - web-guide\nmodel:", (self.root / ".claude" / "agents" / "executor.md").read_text(encoding="utf-8"))
+        self.assertNotIn("skills:", (self.root / ".claude" / "agents" / "tester.md").read_text(encoding="utf-8"))
+        self.assertTrue((skill / "SKILL.md").exists(), "sync must never remove a hand-installed skill")
+        code, output = self.run_cli("check")
+        self.assertEqual(code, 0, output)
+
     def test_log_rejects_unknown_keys_and_statuses(self):
         self.assertEqual(self.run_cli("log", "--agent", "x", "--status", "success", "--message", "m", "--set", "colour=red")[0], 1)
         self.assertEqual(self.run_cli("log", "--agent", "x", "--status", "done", "--message", "m")[0], 2)

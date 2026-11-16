@@ -460,6 +460,15 @@ def agent_extra_tools(ws: Workspace, name: str) -> list[str]:
     return ws.config.get("claude_code", {}).get("agent_tools", {}).get(name, [])
 
 
+def agent_skills(ws: Workspace, name: str) -> list[str]:
+    """Skills preloaded into the subagent at startup (claude_code.agent_skills): installed under .claude/skills/<skill>/."""
+    return list(ws.config.get("claude_code", {}).get("agent_skills", {}).get(name, []))
+
+
+def skills_frontmatter(skills: list[str]) -> str:
+    return ("skills:\n" + "".join(f"  - {skill}\n" for skill in skills)) if skills else ""
+
+
 def mcp_summary(tools: list[str]) -> list[str]:
     """mcp__server__a, mcp__server__b -> mcp:server (compact form for the roster table)."""
     out: list[str] = []
@@ -510,6 +519,7 @@ def generate_claude(ws: Workspace, agents: dict[str, Agent], values: dict[str, s
             f"---\nname: {name}\n"
             f"description: {yaml_quote(agent.meta.get('description', name))}\n"
             f"tools: {claude_tools(agent.meta, agent_extra_tools(ws, name))}\n"
+            f"{skills_frontmatter(agent_skills(ws, name))}"
             f"model: {agent.meta.get('model', 'inherit')}\n---\n\n"
             f"<!-- {GENERATED_MARK} from {' > '.join(agent.chain)} — do not edit here -->\n\n"
         )
@@ -732,6 +742,15 @@ def cmd_check(ws: Workspace) -> None:
     for name in ws.config.get("claude_code", {}).get("agent_tools", {}):
         if name not in agents:
             problems.append(f"config.claude_code.agent_tools: unknown agent '{name}'")
+    for name, skills in ws.config.get("claude_code", {}).get("agent_skills", {}).items():
+        if name not in agents:
+            problems.append(f"config.claude_code.agent_skills: unknown agent '{name}'")
+        if not isinstance(skills, list) or not skills:
+            problems.append(f"config.claude_code.agent_skills.{name}: expected a non-empty list of skill names")
+            continue
+        for skill in skills:
+            if not (ws.root / ".claude" / "skills" / str(skill) / "SKILL.md").exists():
+                problems.append(f"config.claude_code.agent_skills.{name}: skill '{skill}' is not installed (.claude/skills/{skill}/SKILL.md)")
     for project in ws.config.get("projects", []):
         if not ws.project_path(project).is_dir():
             problems.append(f"project {project.get('name')}: path {ws.project_path(project)} does not exist")

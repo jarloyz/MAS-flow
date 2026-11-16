@@ -28,7 +28,8 @@ For each agent, the generator:
 1. Resolves layers: `agents/core/` → enabled `agents/packs/<pack>/` → project `<state_dir>/agents/`. `extends:` chains are appended as `## SPECIALIZATION` sections.
 2. Replaces placeholders (`{{HANDOFF}}`, `{{PROJECTS}}`, `{{TEST_COMMANDS}}`, ...) from `masflow.config.json`; unknown placeholders are an error.
 3. Appends the shared protocol (`_shared.md`) and the Claude Code runtime notes (no working-directory parameter in Bash → `cd <abs> && cmd`; Edit parameters; final message = result envelope).
-4. Maps abstract tools: `read → Read`, `search → Grep, Glob`, `edit → Edit`, `write → Write`, `shell → Bash`.
+4. Maps abstract tools: `read → Read`, `search → Grep, Glob`, `edit → Edit`, `write → Write`, `shell → Bash`. Extra tools (MCP) come from `claude_code.agent_tools`.
+   Skills listed in `claude_code.agent_skills` (`{"executor_filament": ["modern-web-guidance"]}`) become the subagent's `skills:`, whose full content is preloaded at startup (subagents do not inherit the main session's skills). The skill must be installed in `.claude/skills/<name>/SKILL.md`; `check` reports a missing one, and `sync` never removes a skill it did not generate. If the skill runs a CLI, allow that exact command in the permissions and name it in the agent's prompt as an exception to its shell rule.
 5. Merges `.claude/settings.json`: replaces only MAS-Flow-owned hooks and adds the configured permissions; everything else is preserved.
 6. Removes generated agents that no longer exist (hand-written agents are never touched).
 
